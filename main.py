@@ -135,72 +135,99 @@ def simulate_preferential_attachment(k_initial=10, total_nodes=100, max_new_conn
 
 
 def analyze_degrees(G: NXGraph, k_initial: int, initial_node_set: set):
+    if not G or not isinstance(G, NXGraph) or G.number_of_nodes() == 0:
+        print("Graph is invalid, empty, or not a NetworkX graph. Cannot analyze.")
+        return None
 
+    results = {}
     try:
         degrees = dict(G.degree())
         if not degrees:
             print("Graph has no nodes with degrees.")
-            return
+            return None
 
-        # Sort nodes by degree, descending
         sorted_nodes_by_degree = sorted(degrees.items(), key=lambda item: item[1], reverse=True)
 
-        print("\n--- Degree Analysis ---")
+        # top k degrees
+        actual_k = min(k_initial, len(sorted_nodes_by_degree))
+        top_k_nodes_data = sorted_nodes_by_degree[:actual_k]
+        results['top_k_degrees'] = [degree for node, degree in top_k_nodes_data]
+        # average degree among these top k nodes
+        results['avg_top_k_degree'] = np.mean(results['top_k_degrees']) if results['top_k_degrees'] else 0
 
-        # --- Top k Degrees ---
-        print(f"\nTop {k_initial} Highest Degree Nodes:")
-        top_k_nodes = sorted_nodes_by_degree[:k_initial]
-        top_k_degrees = [degree for node, degree in top_k_nodes]
-        # Ensure k_initial isn't larger than the number of nodes analysed
-        actual_k = len(top_k_nodes)
-        print(f"  Degrees: {top_k_degrees}")
-        print(f"  Nodes (Node ID: Degree): {top_k_nodes}")
+        # fraction from original graph
+        original_nodes_in_top_k = sum(1 for node, degree in top_k_nodes_data if node in initial_node_set)
+        results['fraction_original'] = original_nodes_in_top_k / actual_k if actual_k > 0 else 0
 
-        original_nodes_in_top_k = 0
-        for node, degree in top_k_nodes:
-            if node in initial_node_set:
-                original_nodes_in_top_k += 1
-
-        fraction_original = original_nodes_in_top_k / actual_k if actual_k > 0 else 0
-        print(
-            f"\nFraction of Top {actual_k} Degree Nodes that are from the Initial Graph: {fraction_original:.2f} ({original_nodes_in_top_k}/{actual_k})")
-
-        # lowest degrees there are in the graph
+        # lowest degrees
         degree_counts = Counter(degrees.values())
-        min_degree = min(degree_counts.keys()) if degree_counts else 0
-        num_min_degree_nodes = degree_counts.get(min_degree, 0)
+        results['min_degree'] = min(degree_counts.keys()) if degree_counts else 0
+        results['num_min_degree_nodes'] = degree_counts.get(results['min_degree'], 0)
 
-        print(f"\nLowest Degree: {min_degree}")
-        print(f"  Number of nodes with degree {min_degree}: {num_min_degree_nodes}")
+        # leaves
+        results['num_leaves'] = degree_counts.get(1, 0)
 
-        # number of leaves
-        leaves = [node for node, degree in degrees.items() if degree == 1]
-        num_leaves = len(leaves)
-        print(f"\nNumber of Leaves: {num_leaves}")
+        return results
 
     except Exception as e:
         print(f"An error occurred during degree analysis: {e}")
-
+        return None
 
 if __name__ == '__main__':
-    INITIAL_K = 10  # k: Number of initial nodes
-    TOTAL_N = 5000  # Total number of nodes to generate
-    MAX_CONN = 5  # Max number of connections for new nodes (random 1 to MAX_CONN)
-    ANIMATE_GRAPH = False  # Set to False in order skip slow animation and just get analysis
-    ANIM_PAUSE = 0.001
+    # --- Parameters ---
+    INITIAL_K = 50  # k: Number of initial nodes (Reduced for faster example)
+    TOTAL_N = 5000  # Total number of nodes (Reduced for faster example)
+    MAX_CONN = 50   # Max number of connections for new nodes
+    NUM_RUNS = 50   # Number of simulations to average over
+    ANIMATE_GRAPH = False   # Keep False for multiple runs, animate just to show off
 
-    print(f"Starting Simulation: Initial Nodes={INITIAL_K}, Total Nodes={TOTAL_N}, Max New Connections={MAX_CONN}")
-    start_time = time.time()
+    print(f"Starting Batch Simulation:")
+    print(f"Parameters: Initial Nodes={INITIAL_K}, Total Nodes={TOTAL_N}, Max New Connections={MAX_CONN}")
+    print(f"Number of Runs: {NUM_RUNS}")
 
-    final_graph, initial_nodes = simulate_preferential_attachment(
-        k_initial=INITIAL_K,
-        total_nodes=TOTAL_N,
-        max_new_connections=MAX_CONN,
-        animate=ANIMATE_GRAPH,
-        animation_pause=ANIM_PAUSE
-    )
+    all_results = []
+    run_times = []
 
-    end_time = time.time()
-    print(f"\nSimulation finished in {end_time - start_time:.2f} seconds.")
+    # --- Simulation Loop ---
+    for run in range(NUM_RUNS):
+        print(f"\nStarting Run {run + 1}/{NUM_RUNS}...")
+        start_time_run = time.time()
 
-    analyze_degrees(final_graph, INITIAL_K, initial_nodes)
+        final_graph, initial_nodes = simulate_preferential_attachment(
+            k_initial=INITIAL_K,
+            total_nodes=TOTAL_N,
+            max_new_connections=MAX_CONN,
+            animate=ANIMATE_GRAPH
+        )
+
+        end_time_run = time.time()
+        run_time = end_time_run - start_time_run
+        run_times.append(run_time)
+        print(f"Run {run + 1} finished in {run_time:.2f} seconds.")
+
+        analysis_results = analyze_degrees(final_graph, INITIAL_K, initial_nodes)
+        if analysis_results:
+            all_results.append(analysis_results)
+        else:
+            print(f"Analysis failed for run {run + 1}.")
+
+
+    # averaging stuff
+    print("\nAveraged Results:")
+    total_execution_time = sum(run_times)
+    print(f"Total time for {NUM_RUNS} runs: {total_execution_time:.2f} seconds.")
+    print(f"Average time per run: {np.mean(run_times):.2f} seconds.")
+
+    if not all_results:
+        print("\nNo valid results collected. Cannot calculate averages.")
+    else:
+        avg_fraction_original = np.mean([res['fraction_original'] for res in all_results])
+        avg_num_leaves = np.mean([res['num_leaves'] for res in all_results])
+        avg_avg_top_k_degree = np.mean([res['avg_top_k_degree'] for res in all_results])
+
+        avg_max_degree = np.mean([res['top_k_degrees'][0] for res in all_results if res['top_k_degrees']])
+
+        print(f"\nAverage Degree of Top {INITIAL_K} Nodes (per run): {avg_avg_top_k_degree:.2f}")
+        print(f"Average Highest Degree Node: {avg_max_degree:.2f}")
+        print(f"Average Fraction of Top {INITIAL_K} Nodes from Initial Graph: {avg_fraction_original:.3f}")
+        print(f"Average Number of Leaves (Degree 1): {avg_num_leaves:.2f}")
