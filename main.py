@@ -52,8 +52,7 @@ def simulate_preferential_attachment(k_initial=10, total_nodes=100, max_new_conn
 
         num_connections_to_make = 0
         if existing_nodes_list:
-            current_max_conn = max(1, max_new_connections)
-            num_connections_to_make = min(random.randint(1, current_max_conn), len(existing_nodes_list))
+            num_connections_to_make = random.randint(1, max_new_connections)
 
         targets = []
         if num_connections_to_make > 0:
@@ -178,11 +177,16 @@ def analyze_degrees(G: NXGraph, k_initial_run: int, initial_node_set: set):
             # average degree among them
             results['avg_top_k_degree'] = np.mean(results['top_k_degrees']) if results['top_k_degrees'] else 0
             # fraction of them over how many from original
-            original_nodes_in_top_k = sum(1 for node, degree in top_k_nodes_data if node in initial_node_set)
-            results['fraction_original'] = original_nodes_in_top_k / actual_k if actual_k > 0 else 0
+            list_of_original_nodes_in_top_k = sum(1 for node, degree in top_k_nodes_data if node in initial_node_set)
+            results['original_nodes_in_top_k'] = list_of_original_nodes_in_top_k
+            results['fraction_original'] = list_of_original_nodes_in_top_k / actual_k if actual_k > 0 else 0
 
         # lowest degrees, most if not all the time 1
         degree_counts = Counter(degrees.values())
+        results['degree_counts'] = dict(degree_counts)
+        total_degrees = sum(degree * count for degree, count in degree_counts.items())
+        total_nodes = sum(count for count in degree_counts.values())
+        results['avg_degree'] = total_degrees / total_nodes if total_nodes > 0 else 0
         results['min_degree'] = min(degree_counts.keys()) if degree_counts else 0
         results['num_min_degree_nodes'] = degree_counts.get(results['min_degree'], 0)
 
@@ -196,16 +200,16 @@ def analyze_degrees(G: NXGraph, k_initial_run: int, initial_node_set: set):
         return None
 
 if __name__ == '__main__':
-    INITIAL_K_DEFAULT = 200
-    TOTAL_N_DEFAULT = 1000
-    NUM_RUNS = 15
+    INITIAL_K_DEFAULT = 100
+    TOTAL_N_DEFAULT = 2000
+    NUM_RUNS = 50
     ANIMATE_GRAPH = False # animation slow, just for show (>ᴗ•) !
 
     RANDOM_N = False   # Set to True to randomize N
     RANDOM_K = False   # Set to True to randomize K
 
     MIN_N_RANDOM = 500
-    MAX_N_RANDOM = 8000
+    MAX_N_RANDOM = 5000
     MIN_K_RANDOM = 5
     MAX_K_RANDOM = 200
 
@@ -317,7 +321,9 @@ if __name__ == '__main__':
 
 
         # averages
-        avg_fraction_original = np.mean([res['fraction_original'] for res in all_results])
+        original_nodes_in_top_k = [res['original_nodes_in_top_k'] for res in all_results]
+        avg_fraction_original = np.mean(original_nodes_in_top_k)
+        avg_degree = np.mean([res['avg_degree'] for res in all_results])
         avg_min_degree = np.mean([res['min_degree'] for res in all_results])
         avg_num_min_degree_nodes = np.mean([res['num_min_degree_nodes'] for res in all_results])
         avg_num_leaves = np.mean([res['num_leaves'] for res in all_results])
@@ -327,11 +333,13 @@ if __name__ == '__main__':
         avg_max_degree = np.mean(max_degrees_per_run) if max_degrees_per_run else 0
 
         # expected values given top k
+        print(f"Counts of Original Nodes in Top K over {NUM_RUNS} runs: {original_nodes_in_top_k}")
         print(f"\nEstimated Expected Value [Fraction Original]: {avg_fraction_original:.4f}")
         print(f"  (Calculated as the average over {num_successful_runs} runs)")
 
         print(f"\nAverage 'Avg Degree of Top k Nodes' (per run): {avg_avg_top_k_degree:.2f}")
         print(f"Average Highest Degree Node (across runs): {avg_max_degree:.2f}")
+        print(f"Average degree of all nodes: {avg_degree:.3f}")
         print(f"Average Lowest Degree (across runs): {avg_min_degree:.2f}")
         print(f"Average Number of Nodes with Lowest Degree (across runs): {avg_num_min_degree_nodes:.2f}")
         print(f"Average Number of Leaves (Degree 1) (across runs): {avg_num_leaves:.2f}")
